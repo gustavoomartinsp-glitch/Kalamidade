@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>KALAMIDADE - ULTIMATE ENGINE V11</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        :root { --p: #ff3300; --t: #ffcc00; --bg: #050508; --card-w: 75px; --card-h: 105px; }
+        body { background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; margin: 0; overflow: hidden; touch-action: none; user-select: none; }
+        .screen { display: none; height: 100vh; width: 100vw; flex-direction: column; }
+        .active { display: flex !important; }
+        
+        #hud { background: rgba(0,0,0,0.95); padding: 5px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--p); height: 60px; z-index: 100; }
+        #phase-bar { background: #111; display: flex; justify-content: center; gap: 10px; padding: 5px; border-bottom: 1px solid #333; font-size: 10px; }
+        .phase { padding: 4px 10px; border-radius: 3px; opacity: 0.3; border: 1px solid white; }
+        .phase.active-p { opacity: 1; border-color: var(--t); color: var(--t); box-shadow: 0 0 10px var(--t); }
+        .btn { padding: 8px 12px; border: 1px solid var(--p); background: transparent; color: white; cursor: pointer; font-family: 'Orbitron'; font-size: 9px; border-radius: 4px; text-transform: uppercase; }
+        .btn:hover:not(:disabled) { background: var(--p); }
+
+        #mulligan-overlay { display: none; position: fixed; top: 15%; left: 50%; transform: translate(-50%, 0); background: rgba(0,0,0,0.95); border: 2px solid var(--t); padding: 20px; z-index: 8000; text-align: center; border-radius: 15px; width: 320px; box-shadow: 0 0 40px rgba(0,0,0,1); }
+        #timer-display { font-size: 28px; color: var(--p); font-weight: bold; }
+
+        /* MODIFICADO: Estilos para o Zoom do Board */
+        #game-container { 
+            flex-grow: 1; 
+            overflow: hidden; 
+            background: #08080a; 
+            position: relative; 
+            cursor: grab;
+        }
+        #game-board {
+            transition: transform 0.1s ease-out;
+            transform-origin: center center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .zone { border: 1px solid rgba(255,255,255,0.03); position: relative; display: flex; justify-content: center; align-items: center; gap: 15px; padding: 25px; min-height: 110px; }
+        .zone-label { position: absolute; top: 2px; left: 5px; font-size: 7px; color: var(--p); opacity: 0.5; }
+
+        #deck-pile { 
+            position: fixed; bottom: 20px; left: 20px; width: var(--card-w); height: var(--card-h);
+            background-image: url('https://i.postimg.cc/t1Grstkt/unnamed-(1).jpg');
+            background-size: cover; border: 1px solid #444; border-radius: 6px; z-index: 200;
+            display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+            cursor: pointer; transition: 0.3s; box-shadow: -4px 4px 0px #111;
+        }
+        #deck-pile.highlight { border-color: var(--t); box-shadow: 0 0 20px var(--t); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        .card-container { position: relative; width: var(--card-w); height: var(--card-h); flex-shrink: 0; transition: transform 0.2s; }
+        /* Zoom Individual ao passar o mouse */
+        .card-container:hover { transform: scale(1.2); z-index: 500 !important; }
+
+        .card { width: var(--card-w); height: var(--card-h); position: absolute; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .card-inner { width: 100%; height: 100%; border-radius: 6px; overflow: hidden; border: 1px solid #444; background: #111; position: relative; }
+        .card-img { width: 100%; height: 100%; background-size: cover; background-position: center; pointer-events: none; }
+        .card-cost { position: absolute; top: -5px; right: -5px; background: var(--p); color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 9px; border: 1px solid white; z-index: 10; }
+        .attach-1 { transform: translate(6px, 6px); z-index: 1; }
+        .attach-2 { transform: translate(12px, 12px); z-index: 2; }
+        .leader { z-index: 5; }
+
+        #zoom-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 9000; flex-direction: column; justify-content: center; align-items: center; }
+        .evo-container { display: flex; align-items: center; gap: 30px; }
+        
+        /* MELHORA DE QUALIDADE ADICIONADA AQUI */
+        .evo-card-view { 
+            width: 220px; 
+            height: 308px; 
+            border: 2px solid var(--p); 
+            border-radius: 10px; 
+            background-size: cover;
+            image-rendering: -webkit-optimize-contrast; /* Chrome/Safari */
+            image-rendering: crisp-edges;               /* Firefox */
+            image-rendering: pixelated;                 /* General */
+        }
+
+        #context-menu { display: none; position: fixed; background: #000; border: 1px solid var(--p); z-index: 9500; flex-direction: column; min-width: 160px; }
+        .menu-item { padding: 12px; font-size: 10px; cursor: pointer; border-bottom: 1px solid #222; text-transform: uppercase; }
+        .menu-item:hover { background: var(--p); }
+
+        /* Controles de Zoom Visuais */
+        #zoom-controls { position: fixed; bottom: 20px; right: 20px; display: flex; gap: 5px; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+<div id="context-menu"></div>
+
+<div id="zoom-controls">
+    <button class="btn" onclick="BoardZoom.change(0.1)">+</button>
+    <button class="btn" onclick="BoardZoom.reset()">100%</button>
+    <button class="btn" onclick="BoardZoom.change(-0.1)">-</button>
+</div>
+
+<div id="mulligan-overlay">
+    <div id="timer-display">60</div>
+    <h3 style="margin: 10px 0; font-size: 14px; color: var(--t);">DECISÃO DE MÃO</h3>
+    <div style="display: flex; gap: 10px; justify-content: center;">
+        <button class="btn" onclick="Game.mulligan(true)">TROCAR TUDO</button>
+        <button class="btn" onclick="Game.mulligan(false)" style="background: var(--p);">MANTER</button>
+    </div>
+</div>
+
+<div id="deck-pile" onclick="Game.draw()">
+    <div id="deck-count" style="background:rgba(0,0,0,0.7); color:white; width:100%; text-align:center; font-size:10px;">--</div>
+</div>
+
+<div id="zoom-modal" onclick="this.style.display='none'">
+    <div class="evo-container">
+        <div><div id="view-a" class="evo-card-view"></div><div style="text-align:center; font-size:10px; margin-top:5px;">BASE</div></div>
+        <div id="evo-arrow" style="font-size: 30px; color: var(--t);">➔</div>
+        <div id="box-b"><div id="view-b" class="evo-card-view"></div><div style="text-align:center; font-size:10px; margin-top:5px;">EVOLUÇÃO</div></div>
+    </div>
+    <div id="zoom-desc" style="margin-top:20px; color:white; font-size:11px; max-width: 400px; text-align: center;"></div>
+</div>
+
+<div id="scr-menu" class="screen active" style="justify-content:center; align-items:center;">
+    <h1 style="color:var(--p); font-size:3.5rem;">KALAMIDADE</h1>
+    <div style="background:#111; padding:30px; border:1px solid #333; text-align:center; border-radius:10px;">
+        <button class="btn" onclick="Builder.open()" style="width:100%; margin-bottom:10px; padding:15px;">CONSTRUIR DECK</button>
+        <input type="text" id="room-pass" placeholder="ID DA SALA" style="padding:12px; width:80%; margin-bottom:10px; background:#000; color:#fff; border:1px solid #444; text-align:center;"><br>
+        <button class="btn" onclick="Game.connect()" style="width:100%; padding:15px; background:var(--p)">JOGAR</button>
+    </div>
+</div>
+
+<div id="scr-builder" class="screen">
+    <div id="hud"><button class="btn" onclick="Builder.close()">VOLTAR</button><span id="d-count">0/20</span><button class="btn" onclick="Builder.save()">SALVAR</button></div>
+    <div style="display:flex; flex:1; overflow:hidden;">
+        <div id="build-grid" style="display:grid; grid-template-columns: repeat(auto-fill, 80px); gap:12px; padding:20px; overflow-y:auto; flex:1;"></div>
+        <div id="d-list" style="width:250px; background:#0d0d0d; padding:15px; font-size:11px; overflow-y:auto; border-left: 1px solid #333;"></div>
+    </div>
+</div>
+
+<div id="scr-game" class="screen">
+    <div id="hud">
+        <div style="font-size:10px;">RIVAL HP: <b id="op-hp">20</b> | MEU HP: <b id="p-hp">20</b></div>
+        <div id="turn-display">CONECTANDO...</div>
+        <button class="btn btn-turn" id="btn-phase" onclick="Game.nextPhase()">PRÓXIMA FASE</button>
+    </div>
+    <div id="phase-bar">
+        <div id="ph-1" class="phase">COMPRA</div>
+        <div id="ph-2" class="phase">PREPARAÇÃO</div>
+        <div id="ph-3" class="phase">BATALHA</div>
+        <div id="ph-4" class="phase">FINAL</div>
+    </div>
+    <div id="game-container">
+        <div id="game-board">
+            <div id="z-en-hand" class="zone" style="min-height:80px; background:rgba(255,255,255,0.02);"><div class="zone-label">MÃO RIVAL</div></div>
+            <div id="z-en-base" class="zone"><div class="zone-label">RIVAL BASE</div></div>
+            <div id="z-en-battle" class="zone"><div class="zone-label">RIVAL CAMPO</div></div>
+            <hr style="opacity:0.1">
+            <div id="z-my-battle" class="zone"><div class="zone-label">MEU CAMPO</div></div>
+            <div id="z-my-base" class="zone"><div class="zone-label">MINHA BASE</div></div>
+            <div id="z-my-hand" class="zone" style="min-height:160px; padding-left: 110px;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// NOVA LÓGICA DE ZOOM DO TABULEIRO
+const BoardZoom = {
+    scale: 1,
+    init() {
+        const container = document.getElementById('game-container');
+        container.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                this.change(e.deltaY > 0 ? -0.1 : 0.1);
+            }
+        }, { passive: false });
+    },
+    change(val) {
+        this.scale = Math.min(Math.max(0.5, this.scale + val), 2);
+        this.apply();
+    },
+    reset() {
+        this.scale = 1;
+        this.apply();
+    },
+    apply() {
+        document.getElementById('game-board').style.transform = `scale(${this.scale})`;
+    }
+};
+
+const CARD_BACK = "https://i.postimg.cc/t1Grstkt/unnamed-(1).jpg";
+
+const DB = [
+    { id: 1, type:'tropa', name:"Cavaleiro", cost:0, atk:2, buff:1, abi:"Nenhuma", img:"https://i.postimg.cc/hzpYBXk1/Img1.png", evo:null },
+    { id: 2, type:'tropa', name:"Lanceiro", cost:0, atk:1, buff:2, abi:"Nenhuma", img:"https://i.postimg.cc/dD3HCVMx/Img2.png", evo:null },
+    { id: 3, type:'tropa', name:"Aprendiz em Treinamento", cost:1, atk:1, buff:0, abi:"Ganha 1 Marcador para cada turno na Base (Máx 5).  Se tiver 5 Marcadores, evolua essa carta.", img:"https://i.postimg.cc/dLd9R75b/Img3.png", evo:4 },
+    { id: 4, type:'tropa', name:"Aprendiz Experiente", cost:2, atk:3, buff:1, abi:"Ganha +1 de Atk com 5 Marcadores.", img:"https://i.postimg.cc/nXpqv3jQ/Img4.png", isEvo: true },
+    { id: 5, type:'tropa', name:"Traidor Condenado", cost:2, atk:0, buff:0, abi:"Ganha 1 Marcador para cada turno na Base (Máx 5).  Se tiver 5 Marcadores, evolua essa carta.", img:"https://i.postimg.cc/fSvRZfzR/Img5.png", evo:6 },
+    { id: 6, type:'tropa', name:"Redenção da Guerra", cost:3, atk:5, buff:3, abi:"Ganha +1 de Atk se tiver Tropas de 2 de Poder Anexado a essa carta.", img:"https://i.postimg.cc/KkPZrDgZ/Img6.png", isEvo: true },
+    { id: 7, type:'tropa', name:"Escudeiro da Guarda Real", cost:2, atk:0, buff:3, abi:"Da +1 de Buff a Tropa que tiver essa carta Anexada.", img:"https://i.postimg.cc/56nB1Z2z/Img7.png", evo:null },
+    { id: 8, type:'tropa', name:"Comandante da Guarda Real", cost:3, atk:3, buff:2, abi:"Ganha +1 de Atk se tiver Marcador.", img:"https://i.postimg.cc/FkhSXZtY/Img8.png", evo:null },
+    { id: 9, type:'tropa', name:"Cavaleiro da Guarda Real", cost:4, atk:3, buff:4, abi:"Ganha 1 Marcador tida vez que derrota uma carta inimiga.  Ganha +1 de Poder por Marcador.", img:"https://i.postimg.cc/06mK63Pd/Img9.png", evo:null },
+    { id: 10, type:'tropa', name:"Socorrista do Exército", cost:2, atk:0, buff:1, abi:"Adiciona 1 Marcador a trêscartas diferentes.", img:"https://i.postimg.cc/Z0fnqZ64/Img10.png", evo:null },
+    { id: 11, type:'tropa', name:"Rei dos Cavaleiros da Ordem Real", cost:5, atk:3, buff:3, abi:"Ganha +1 de Ark por cada Marcador nas outras cartas.", img:"https://i.postimg.cc/7CgbP2nB/Img11.png", evo:null },
+    { id: 12, type:'tropa', name:"Cavalo de Guerra", cost:1, atk:0, buff:2, abi:"Jogue uma Tropa de Custo Zero.", img:"https://i.postimg.cc/zL1XQfYG/Img12.png", evo:null },
+    { id: 13, type:'tropa', name:"Bárbaro", cost:0, atk:3, buff:0, abi:"Nenhuma", img:"https://i.postimg.cc/7CDwVQSf/Img17.png", evo:null },
+    { id: 14, type:'tropa', name:"Arqueiro Bárbaro", cost:1, atk:2, buff:1, abi:"Nenhuma", img:"https://i.postimg.cc/kVnP8Rmr/Img18.png", evo:null },
+    { id: 15, type:'tropa', name:"Fúria da Guerra", cost:3, atk:6, buff:0, abi:"Se tiver Tropas inimigas em campo, Atk sempre que puder.", img:"https://i.postimg.cc/9z45GjsS/Img19.png", evo:null },
+    { id: 16, type:'tropa', name:"Bárbaro Enfurecido", cost:2, atk:5, buff:0, abi:"Evolui ao morrer.", img:"https://i.postimg.cc/3yLVvL1x/Img20.png", evo:17 },
+    { id: 17, type:'tropa', name:"Bárbaro Frenéticamente Enfurecido", cost:3, atk:8, def:0, abi:"se sofrer 2 Atks no mesmo turno, é derrtado.", img:"https://i.postimg.cc/1fxTwVG9/Img21.png", isEvo: true },
+    { id: 18, type:'tropa', name:"Bárbaro Brutamonte", cost:3, atk:5, buff:0, abi:"Ganha +1 de Atk após derrota uma Tropa inimiga.", img:"https://i.postimg.cc/w3N4qxC7/Img22.png", evo:null },
+    { id: 19, type:'tropa', name:"Retalhadora Sedenta", cost:2, atk:2, buff:2, abi:"Ganha +1 de Atk após derrota uma Tropa inimiga.", img:"https://i.postimg.cc/14DMxCFm/Img23.png", evo:null },
+    { id: 20, type:'tropa', name:"Comandante Bárbaro", cost:4, atk:6, buff:3, abi:"Uma vez por turno, jogue uma Tropa de custo Zero adicional no turno.", img:"https://i.postimg.cc/HJf0RXsK/Img24.png", evo:null },
+    { id: 101, type:'tatica', name:"Grito de Bravura", cost:1, abi:"+1 de Atk para todas as Tropas.", img:"https://i.postimg.cc/HrnhC0HR/Img13.png" },
+    { id: 102, type:'tatica', name:"Parede de Escudos", cost:1, abi:"Ganha +2 de Buff na defesa de um Atk.", img:"https://i.postimg.cc/SJTgVX8c/Img14.png" },
+    { id: 103, type:'tatica', name:"Avanço da Cavalaria", cost:2, abi:"Jogue uma Tropa de Custo zero ou um.", img:"https://i.postimg.cc/BLBgFt4v/Img15.png" },
+    { id: 104, type:'tatica', name:"Arsenal do Exercito", cost:1, abi:"Coloque 3 Marcadores em uma Tropa.", img:"https://i.postimg.cc/Yj8Rq4X7/Img16.png" },
+    { id: 105, type:'tatica', name:"Indomável", cost:2, abi:"Dobra o Atk de uma Tropa.", img:"https://i.postimg.cc/943tNyfJ/Img25.png" },
+    { id: 106, type:'tatica', name:"Avanço Estrondoso", cost:1, abi:"Jogue uma Tropa direto no Campo de Batalha.", img:"https://i.postimg.cc/62cr3SfV/Img26.png" },
+    { id: 107, type:'tatica', name:"Ímpeto da Ira", cost:2, abi:"Ganha +1 de Atk para todas as Tropas.", img:"https://i.postimg.cc/BtZ5ySq3/Img27.png" }
+];
+
+const Builder = {
+    selected: [], timer: null, isZooming: false,
+    init() { const s = localStorage.getItem('kalamidade_deck_v4'); this.selected = s ? JSON.parse(s) : []; },
+    open() { this.init(); document.getElementById('scr-menu').classList.remove('active'); document.getElementById('scr-builder').classList.add('active'); this.render(); this.updateUI(); },
+    close() { document.getElementById('scr-builder').classList.remove('active'); document.getElementById('scr-menu').classList.add('active'); },
+    render() {
+        const grid = document.getElementById('build-grid'); if(!grid) return; grid.innerHTML = "";
+        DB.filter(c => !c.isEvo).forEach(d => {
+            const el = document.createElement('div'); el.className = 'card-container';
+            el.innerHTML = `<div class="card"><div class="card-cost">${d.cost}</div><div class="card-inner"><div class="card-img" style="background-image:url('${d.img}')"></div></div></div>`;
+            el.onpointerdown = () => { this.isZooming = false; this.timer = setTimeout(() => { this.showZoom(d); this.isZooming = true; }, 500); };
+            el.onpointerup = () => { clearTimeout(this.timer); if(!this.isZooming) this.add(d); };
+            grid.appendChild(el);
+        });
+    },
+    add(d) {
+        if(this.selected.length >= 20) return;
+        const count = this.selected.filter(x => x.id === d.id).length;
+        if(count < (d.cost <= 1 ? 5 : 1)) { this.selected.push({...d}); this.updateUI(); }
+    },
+    updateUI() {
+        const cnt = document.getElementById('d-count'); if(cnt) cnt.innerText = `${this.selected.length}/20`;
+        const l = document.getElementById('d-list'); if(!l) return; l.innerHTML = "<b>DECK:</b><br>";
+        this.selected.forEach((s, i) => { l.innerHTML += `<div style="padding:4px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">${s.name} <span onclick="Builder.remove(${i})" style="color:red; cursor:pointer;">X</span></div>`; });
+    },
+    remove(i) { this.selected.splice(i, 1); this.updateUI(); },
+    save() { localStorage.setItem('kalamidade_deck_v4', JSON.stringify(this.selected)); alert("DECK SALVO!"); },
+    showZoom(d) {
+        document.getElementById('zoom-modal').style.display = 'flex';
+        document.getElementById('view-a').style.backgroundImage = `url('${d.img}')`;
+        const evo = d.evo ? DB.find(x => x.id === d.evo) : null;
+        if(evo) { document.getElementById('box-b').style.display='block'; document.getElementById('evo-arrow').style.display='block'; document.getElementById('view-b').style.backgroundImage = `url('${evo.img}')`; }
+        else { document.getElementById('box-b').style.display='none'; document.getElementById('evo-arrow').style.display='none'; }
+        document.getElementById('zoom-desc').innerText = `HABILIDADE: ${d.abi}`;
+    }
+};
+
+const Game = {
+    peer: null, conn: null, energy: 0, hp: 20, opHp: 20, myTurn: false, phase: 0,
+    hand: [], deck: [], boardState: [], opHandSize: 0, opBoard: [],
+    ready: false, opReady: false, mulliganTime: 60, mTimer: null,
+    audio: new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'),
+    attackerSelected: null,
+
+    connect() {
+        this.audio.loop = true; this.audio.play().catch(()=>{});
+        const id = document.getElementById('room-pass').value || "SALA";
+        this.peer = new Peer("KALA-" + id);
+        this.peer.on('open', () => { this.peer.on('connection', c => this.setup(c, true)); });
+        this.peer.on('error', () => { const g = new Peer(); g.on('open', () => { this.setup(g.connect("KALA-" + id), false); }); });
+    },
+
+    setup(c, master) {
+        this.conn = c; this.isMaster = master;
+        this.deck = (JSON.parse(localStorage.getItem('kalamidade_deck_v4')) || []).sort(() => Math.random() - 0.5);
+        document.getElementById('scr-menu').classList.remove('active');
+        document.getElementById('scr-game').classList.add('active');
+        this.conn.on('data', d => this.handleData(d));
+        for(let i=0; i<4; i++) if(this.deck.length > 0) this.hand.push({ ...this.deck.shift(), instanceId: Math.random(), counters: 0, buff: [], currentZone: 'hand' });
+        this.startMulligan();
+        BoardZoom.init(); // Inicia o sistema de zoom ao carregar o jogo
+    },
+
+    startMulligan() {
+        document.getElementById('mulligan-overlay').style.display = 'block';
+        this.mTimer = setInterval(() => {
+            this.mulliganTime--;
+            document.getElementById('timer-display').innerText = this.mulliganTime;
+            if(this.mulliganTime <= 0) this.mulligan(false);
+        }, 1000);
+        this.updateUI();
+    },
+
+    mulligan(swap) {
+        clearInterval(this.mTimer);
+        document.getElementById('mulligan-overlay').style.display = 'none';
+        if(swap) {
+            this.deck.push(...this.hand);
+            this.deck.sort(() => Math.random() - 0.5);
+            this.hand = [];
+            for(let i=0; i<4; i++) if(this.deck.length > 0) this.hand.push({ ...this.deck.shift(), instanceId: Math.random(), counters: 0, buff: [], currentZone: 'hand' });
+        }
+        this.ready = true; this.conn.send({ type: 'ready', handSize: this.hand.length });
+        this.checkStart();
+    },
+
+    checkStart() {
+        if(this.ready && this.opReady && this.isMaster) {
+            const p1Starts = Math.random() > 0.5;
+            this.conn.send({ type: 'start_game', p1Starts });
+            this.startGame(p1Starts);
+        }
+    },
+
+    startGame(iStart) { this.myTurn = iStart; if(this.myTurn) this.startTurn(); else this.updateUI(); },
+    startTurn() { this.myTurn = true; this.phase = 1; this.energy++; this.sync(); },
+
+    draw() {
+        if((this.phase === 1 || this.phase === 2) && this.myTurn && this.deck.length > 0) {
+            this.hand.push({ ...this.deck.shift(), instanceId: Math.random(), counters: 0, buff: [], currentZone: 'hand' });
+            if(this.phase === 1) this.phase = 2;
+            this.sync();
+        }
+    },
+
+    nextPhase() {
+        if(this.phase === 1) return alert("CLIQUE NO DECK PARA COMPRAR!");
+        if(this.phase === 2) this.phase = 3;
+        else if(this.phase === 3) this.phase = 4;
+        else if(this.phase === 4) { this.myTurn = false; this.conn.send({type:'end'}); this.phase = 0; }
+        this.attackerSelected = null;
+        this.updateUI();
+    },
+
+    handleData(d) {
+        if(d.type === 'ready') { this.opReady = true; this.opHandSize = d.handSize; this.checkStart(); }
+        if(d.type === 'start_game') this.startGame(!d.p1Starts);
+        if(d.type === 'sync') { this.opBoard = d.board; this.opHandSize = d.handSize; this.opHp = d.hp; this.renderEnemy(d.board); this.updateUI(); }
+        if(d.type === 'end') this.startTurn();
+        if(d.type === 'attack_player') { this.hp -= d.val; this.sync(); }
+        if(d.type === 'combat') {
+            const target = this.boardState.find(c => c.instanceId === d.targetId);
+            if(target) {
+                const myPower = this.calculateTotalPower(target);
+                if(d.attackerPower > myPower) {
+                    this.boardState = this.boardState.filter(c => c.instanceId !== d.targetId);
+                    alert("Sua tropa foi derrotada em combate!");
+                } else if (d.attackerPower < myPower) {
+                    this.conn.send({type: 'combat_result', result: 'lose', attackerId: d.attackerId});
+                }
+                this.sync();
+            }
+        }
+        if(d.type === 'combat_result') {
+            if(d.result === 'lose') {
+                this.boardState = this.boardState.filter(c => c.instanceId !== d.attackerId);
+                alert("Sua tropa perdeu o combate e foi destruída!");
+            }
+            this.sync();
+        }
+    },
+
+    calculateTotalPower(card) {
+        let total = card.atk;
+        card.buff.forEach(b => { total += b.buff; });
+        return total;
+    },
+
+    renderEnemy(eb) {
+        ['base', 'battle'].forEach(z => {
+            const div = document.getElementById(`z-en-${z}`);
+            if(!div) return;
+            div.innerHTML = `<div class="zone-label">RIVAL ${z.toUpperCase()}</div>`;
+            eb.filter(c => c.currentZone === `z-my-${z}`).forEach(c => div.appendChild(this.createCardEl(c, false)));
+        });
+    },
+
+    createCardEl(c, mine, isHidden = false) {
+        const cont = document.createElement('div'); cont.className = 'card-container';
+        if(isHidden) {
+            cont.innerHTML = `<div class="card"><div class="card-inner"><div class="card-img" style="background-image:url('${CARD_BACK}')"></div></div></div>`;
+            return cont;
+        }
+        c.buff.forEach((a, i) => {
+            const ac = document.createElement('div'); ac.className = `card attach-${i+1}`;
+            ac.innerHTML = `<div class="card-inner"><div class="card-img" style="background-image:url('${a.img}')"></div></div>`;
+            cont.appendChild(ac);
+        });
+        const l = document.createElement('div'); l.className = 'card leader';
+        const power = this.calculateTotalPower(c);
+        l.innerHTML = `<div class="card-inner"><div class="card-img" style="background-image:url('${c.img}')"></div>
+            <div style="position:absolute; top:2px; left:2px; background:black; color:white; font-size:10px; padding:2px; border:1px solid var(--t)">${power} Pwr</div>
+            ${c.counters ? `<div style="position:absolute; bottom:2px; right:2px; background:var(--t); color:#000; padding:2px; font-size:9px;">${c.counters}</div>` : ''}</div>`;
+        
+        if(mine) {
+            l.onclick = (e) => this.showContextMenu(e, c, c.currentZone);
+        } else if (this.attackerSelected && c.currentZone === 'z-my-battle') {
+            l.onclick = () => this.resolveCombat(c);
+        }
+        cont.appendChild(l);
+        return cont;
+    },
+
+    showContextMenu(e, card, zone) {
+        if(!this.myTurn) return;
+        const menu = document.getElementById('context-menu');
+        menu.style.display = 'flex'; menu.style.top = e.clientY + 'px'; menu.style.left = e.clientX + 'px';
+        menu.innerHTML = "";
+        const opt = (n, f) => {
+            const d = document.createElement('div'); d.className = 'menu-item';
+            d.innerText = n; d.onclick = () => { f(); menu.style.display = 'none'; };
+            menu.appendChild(d);
+        };
+        opt("VER ZOOM (DETALHES)", () => Builder.showZoom(card));
+        
+        if(card.buff && card.buff.length > 0) {
+            opt("REMOVER ÚLTIMO ANEXO", () => {
+                card.buff.pop();
+                this.sync();
+                alert("Última carta anexada foi descartada.");
+            });
+        }
+
+        if(zone === 'hand' && this.phase === 2) opt("BAIXAR NA BASE", () => {
+            this.hand = this.hand.filter(h => h.instanceId !== card.instanceId); 
+            card.currentZone='z-my-base'; 
+            this.boardState.push(card); 
+            this.sync(); 
+        });
+
+        if(zone === 'z-my-base' && this.phase === 2) {
+            opt("ENVIAR P/ CAMPO", () => { card.currentZone = 'z-my-battle'; this.sync(); });
+            opt("ANEXAR (BUFF)", () => this.handleAttach(card));
+            if(card.evo) opt("EVOLUIR", () => this.handleEvo(card));
+            opt("+1 PODER", () => { card.atk++; this.sync(); });
+            opt("-1 PODER", () => { card.atk--; this.sync(); });
+            opt("DESCARTAR", () => { this.boardState = this.boardState.filter(x => x.instanceId !== card.instanceId); this.sync(); });
+        }
+
+        if(zone === 'z-my-battle' && this.phase === 3) {
+            opt("ATACAR JOGADOR", () => {
+                this.conn.send({ type: 'attack_player', val: this.calculateTotalPower(card) });
+                alert("Ataque direto enviado!");
+            });
+            opt("ATACAR TROPA", () => {
+                this.attackerSelected = card;
+                alert("Selecione uma tropa rival no campo de batalha!");
+                this.updateUI();
+            });
+            opt("+1 PODER", () => { card.atk++; this.sync(); });
+            opt("-1 PODER", () => { card.atk--; this.sync(); });
+            opt("MOVER P/ DESCARTE", () => {
+                this.boardState = this.boardState.filter(x => x.instanceId !== card.instanceId);
+                this.sync();
+            });
+        }
+
+        e.stopPropagation(); window.onclick = () => menu.style.display='none';
+    },
+
+    handleAttach(card) {
+        const target = this.boardState.find(c => c.instanceId !== card.instanceId && c.type === 'tropa' && c.currentZone === card.currentZone);
+        if(target) { 
+            this.boardState = this.boardState.filter(c => c.instanceId !== card.instanceId); 
+            target.buff.push(card); 
+            this.sync(); 
+        }
+    },
+
+    handleEvo(card) {
+        const evoData = DB.find(x => x.id === card.evo);
+        if(evoData) {
+            Object.assign(card, evoData);
+            this.sync();
+        }
+    },
+
+    resolveCombat(targetCard) {
+        if(!this.attackerSelected) return;
+        const attackerPower = this.calculateTotalPower(this.attackerSelected);
+        this.conn.send({
+            type: 'combat',
+            attackerId: this.attackerSelected.instanceId,
+            attackerPower: attackerPower,
+            targetId: targetCard.instanceId
+        });
+        this.attackerSelected = null;
+        this.updateUI();
+    },
+
+    sync() { if(this.conn) this.conn.send({ type: 'sync', board: this.boardState, hp: this.hp, handSize: this.hand.length }); this.updateUI(); },
+
+    updateUI() {
+        document.getElementById('p-hp').innerText = this.hp;
+        document.getElementById('op-hp').innerText = this.opHp;
+        document.getElementById('turn-display').innerText = this.myTurn ? "SEU TURNO" : "TURNO RIVAL";
+        document.getElementById('deck-count').innerText = this.deck.length;
+        document.getElementById('deck-pile').className = ((this.phase === 1 || this.phase === 2) && this.myTurn) ? "highlight" : "";
+        for(let i=1; i<=4; i++) document.getElementById(`ph-${i}`).className = `phase ${this.phase === i ? 'active-p' : ''}`;
+        
+        const h = document.getElementById('z-my-hand'); h.innerHTML = "";
+        this.hand.forEach(c => h.appendChild(this.createCardEl(c, true)));
+
+        const eh = document.getElementById('z-en-hand'); eh.innerHTML = `<div class="zone-label">MÃO RIVAL</div>`;
+        for(let i=0; i < (this.opHandSize || 0); i++) eh.appendChild(this.createCardEl(null, false, true));
+
+        ['base', 'battle'].forEach(z => {
+            const div = document.getElementById(`z-my-${z}`);
+            div.innerHTML = `<div class="zone-label">${z.toUpperCase()}</div>`;
+            this.boardState.filter(c => c.currentZone === `z-my-${z}`).forEach(c => div.appendChild(this.createCardEl(c, true)));
+        });
+    }
+};
+
+window.onload = () => { Builder.init(); };
+</script>
+</body>
+</html>
